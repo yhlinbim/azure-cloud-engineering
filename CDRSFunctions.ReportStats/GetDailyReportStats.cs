@@ -28,7 +28,7 @@ namespace CDRSFunctions.ReportStats
 
             try
             {
-                var connectionString = _configuration["SqlConnectionString"];
+                var connectionString = _configuration.GetConnectionString("SqlConnectionString");
 
                 using var connection = new SqlConnection(connectionString);
 
