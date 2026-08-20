@@ -40,7 +40,10 @@ public class ProcessReportApprovedNotification
                 _logger.LogWarning(
                     "Message {MessageId} could not be deserialized. Dead-lettering.",
                     message.MessageId);
-                await messageActions.DeadLetterMessageAsync(message, "InvalidPayload");
+                await messageActions.DeadLetterMessageAsync(
+                    message,
+                    deadLetterReason: "InvalidPayload",
+                    deadLetterErrorDescription: "Message body could not be deserialized into ReportApprovedEvent");
                 return;
             }
 
