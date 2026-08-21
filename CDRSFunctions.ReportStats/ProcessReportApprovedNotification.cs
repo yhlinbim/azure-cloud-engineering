@@ -28,8 +28,8 @@ public class ProcessReportApprovedNotification
         ServiceBusMessageActions messageActions)
     {
         _logger.LogInformation(
-            "Processing report-approved message. MessageId={MessageId}",
-            message.MessageId);
+            "Processing report-approved message. MessageId={MessageId}, DeliveryCount={DeliveryCount}",
+            message.MessageId, message.DeliveryCount);
 
         try
         {
@@ -50,13 +50,38 @@ public class ProcessReportApprovedNotification
             var connectionString = _configuration.GetConnectionString("SqlConnectionString");
             using var connection = new SqlConnection(connectionString);
 
-            const string sql = @"
+            // Idempotency check ¡X Service Bus guarantees at-least-once delivery,
+            // not exactly-once. Retries (e.g. after a transient DB timeout) can
+            // redeliver a message that already succeeded. Without this check,
+            // every redelivery writes a duplicate row.
+            const string checkSql = @"
+                SELECT COUNT(1) FROM NotificationLog
+                WHERE ReportId = @ReportId
+                  AND EventType = 'ReportApproved'
+                  AND TriggeredAtUtc = @TriggeredAtUtc";
+
+            var alreadyProcessed = await connection.ExecuteScalarAsync<int>(checkSql, new
+            {
+                payload.ReportId,
+                payload.TriggeredAtUtc
+            }) > 0;
+
+            if (alreadyProcessed)
+            {
+                _logger.LogInformation(
+                    "Message {MessageId} for ReportId={ReportId} already processed. Skipping duplicate, completing message.",
+                    message.MessageId, payload.ReportId);
+                await messageActions.CompleteMessageAsync(message);
+                return;
+            }
+
+            const string insertSql = @"
                 INSERT INTO NotificationLog
                     (Id, ReportId, ProjectId, EventType, TriggeredAtUtc, ProcessedAtUtc, Status)
                 VALUES
                     (NEWID(), @ReportId, @ProjectId, 'ReportApproved', @TriggeredAtUtc, GETUTCDATE(), 'Processed')";
 
-            await connection.ExecuteAsync(sql, new
+            await connection.ExecuteAsync(insertSql, new
             {
                 payload.ReportId,
                 payload.ProjectId,
@@ -72,9 +97,6 @@ public class ProcessReportApprovedNotification
         {
             _logger.LogError(ex,
                 "Failed to process report-approved message {MessageId}.", message.MessageId);
-
-            // Don't complete ¡X let Service Bus's built-in retry/dead-letter
-            // handle transient failures automatically.
             throw;
         }
     }
