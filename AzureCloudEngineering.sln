@@ -3,15 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CDRSFunctions.ReportStats", "CDRSFunctions.ReportStats\CDRSFunctions.ReportStats.csproj", "{51980022-C85A-48F9-A89D-BEE42FC337C8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CDRSFunctions.ReportStats", "CDRSFunctions.ReportStats\CDRSFunctions.ReportStats.csproj", "{51980022-C85A-48F9-A89D-BEE42FC337C8}"
 EndProject
 Global
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {97C14594-8504-4521-B3E8-6C38B1365103}
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Debug|x64 = Debug|x64
@@ -33,5 +27,11 @@ Global
 		{51980022-C85A-48F9-A89D-BEE42FC337C8}.Release|x64.Build.0 = Release|Any CPU
 		{51980022-C85A-48F9-A89D-BEE42FC337C8}.Release|x86.ActiveCfg = Release|Any CPU
 		{51980022-C85A-48F9-A89D-BEE42FC337C8}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {97C14594-8504-4521-B3E8-6C38B1365103}
 	EndGlobalSection
 EndGlobal
