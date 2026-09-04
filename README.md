@@ -4,7 +4,7 @@
 |---------|--------|---------------|
 | Azure Functions | Done | HTTP-triggered API for lightweight, event-driven queries |
 | Service Bus | Done | Queue-triggered Function processing async messages, with idempotency check |
-| API Management | Planned | API gateway fronting multiple backend services |
+| API Management | Done | Gateway in front of GetDailyReportStats — subscription key auth, rate limiting |
 | Logic Apps | Planned | Workflow automation without custom code |
 | Blob Storage | Planned | File upload/processing pipeline |
 
