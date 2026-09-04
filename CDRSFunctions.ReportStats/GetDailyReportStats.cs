@@ -20,9 +20,12 @@ namespace CDRSFunctions.ReportStats
             _configuration = configuration;
         }
 
+        // AuthorizationLevel.Anonymous â€” access control has moved to API Management,
+        // which sits in front of this Function and requires a subscription key.
+        // This Function's own key-based auth is no longer the enforcement point.
         [Function("GetDailyReportStats")]
         public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
         {
             _logger.LogInformation("GetDailyReportStats function processing a request.");
 
@@ -33,7 +36,7 @@ namespace CDRSFunctions.ReportStats
                 using var connection = new SqlConnection(connectionString);
 
                 // Aggregated at the database level rather than pulling all rows
-                // back and counting in memory ¡X keeps this read-only endpoint
+                // back and counting in memory ï¿½X keeps this read-only endpoint
                 // fast even as DailyReports grows.
                 const string sql = @"
                     SELECT
