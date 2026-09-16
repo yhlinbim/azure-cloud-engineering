@@ -6,7 +6,7 @@
 | Service Bus | Done | Queue-triggered Function processing async messages, with idempotency check |
 | API Management | Done | Gateway in front of GetDailyReportStats — subscription key auth, rate limiting |
 | Logic Apps | Partial | Configured Service Bus trigger + Compose action; trigger never fired in testing, root cause not found |
-| Blob Storage | Planned | File upload/processing pipeline |
+| Blob Storage | Done | HTTP-triggered upload endpoint, Managed Identity auth |
 
 ## Azure Functions — GetDailyReportStats
 
