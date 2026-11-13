@@ -1,6 +1,7 @@
 using System.Net;
 using Azure.Identity;
 using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,18 @@ public class UploadReportAttachment
     private readonly ILogger<UploadReportAttachment> _logger;
     private const string ContainerName = "report-attachments";
     private const string StorageAccountUrl = "https://stcdrsattachments.blob.core.windows.net";
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+
+    // Content-Type and Content-Length are client-supplied and can't be trusted,
+    // so the body itself is checked: its size while reading, and its leading
+    // "magic bytes" against the signature of the declared type.
+    private static readonly Dictionary<string, (string Extension, byte[] Signature)> AllowedTypes =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["application/pdf"] = (".pdf", "%PDF"u8.ToArray()),
+            ["image/jpeg"] = (".jpg", [0xFF, 0xD8, 0xFF]),
+            ["image/png"] = (".png", [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+        };
 
     public UploadReportAttachment(ILogger<UploadReportAttachment> logger)
     {
@@ -28,6 +41,30 @@ public class UploadReportAttachment
     {
         _logger.LogInformation("UploadReportAttachment processing a request.");
 
+        // Strip parameters such as "; charset=..." before matching.
+        var contentType = req.Headers.TryGetValues("Content-Type", out var values)
+            ? values.First().Split(';')[0].Trim()
+            : null;
+
+        if (contentType is null || !AllowedTypes.TryGetValue(contentType, out var allowed))
+        {
+            return await ErrorAsync(req, HttpStatusCode.UnsupportedMediaType,
+                "Only PDF, JPEG and PNG files are allowed.");
+        }
+
+        using var content = await ReadWithLimitAsync(req.Body, MaxUploadBytes);
+        if (content is null)
+        {
+            return await ErrorAsync(req, HttpStatusCode.RequestEntityTooLarge,
+                $"File exceeds the {MaxUploadBytes / 1024 / 1024} MB limit.");
+        }
+
+        if (!content.GetBuffer().AsSpan(0, (int)content.Length).StartsWith(allowed.Signature))
+        {
+            return await ErrorAsync(req, HttpStatusCode.BadRequest,
+                "File content does not match its Content-Type.");
+        }
+
         try
         {
             // Managed Identity — no connection string, no account key.
@@ -37,11 +74,14 @@ public class UploadReportAttachment
 
             var containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
 
-            var fileName = $"{Guid.NewGuid()}.bin";
+            var fileName = $"{Guid.NewGuid()}{allowed.Extension}";
             var blobClient = containerClient.GetBlobClient(fileName);
 
-            // Request body is treated as the raw file content.
-            await blobClient.UploadAsync(req.Body, overwrite: true);
+            content.Position = 0;
+            await blobClient.UploadAsync(content, new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+            });
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(new
@@ -54,10 +94,35 @@ public class UploadReportAttachment
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to upload attachment.");
-
-            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await errorResponse.WriteAsJsonAsync(new { error = "Unable to upload attachment." });
-            return errorResponse;
+            return await ErrorAsync(req, HttpStatusCode.InternalServerError,
+                "Unable to upload attachment.");
         }
+    }
+
+    // Reads the body into memory, stopping as soon as it exceeds maxBytes.
+    // Returns null if the limit is exceeded.
+    private static async Task<MemoryStream?> ReadWithLimitAsync(Stream source, long maxBytes)
+    {
+        var destination = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await source.ReadAsync(chunk)) > 0)
+        {
+            if (destination.Length + read > maxBytes)
+            {
+                await destination.DisposeAsync();
+                return null;
+            }
+            await destination.WriteAsync(chunk.AsMemory(0, read));
+        }
+        return destination;
+    }
+
+    private static async Task<HttpResponseData> ErrorAsync(
+        HttpRequestData req, HttpStatusCode statusCode, string message)
+    {
+        var response = req.CreateResponse(statusCode);
+        await response.WriteAsJsonAsync(new { error = message });
+        return response;
     }
 }
