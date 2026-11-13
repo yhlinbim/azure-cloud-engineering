@@ -10,6 +10,10 @@ namespace CDRSFunctions.ReportStats;
 
 public class ProcessReportApprovedNotification
 {
+    // SQL Server error numbers for duplicate-key violations.
+    private const int UniqueConstraintViolation = 2627;
+    private const int UniqueIndexViolation = 2601;
+
     private readonly ILogger<ProcessReportApprovedNotification> _logger;
     private readonly IConfiguration _configuration;
 
@@ -69,23 +73,28 @@ public class ProcessReportApprovedNotification
             var connectionString = _configuration.GetConnectionString("SqlConnectionString");
             using var connection = new SqlConnection(connectionString);
 
-            // Idempotency check — Service Bus guarantees at-least-once delivery,
-            // not exactly-once. Retries (e.g. after a transient DB timeout) can
-            // redeliver a message that already succeeded. Without this check,
-            // every redelivery writes a duplicate row.
-            const string checkSql = @"
-                SELECT COUNT(1) FROM NotificationLog
-                WHERE ReportId = @ReportId
-                  AND EventType = 'ReportApproved'
-                  AND TriggeredAtUtc = @TriggeredAtUtc";
+            // Idempotency — Service Bus guarantees at-least-once delivery, not exactly-once,
+            // so the same message can arrive more than once, even concurrently. A
+            // check-then-insert races in that case, so the UNIQUE constraint on
+            // (ReportId, EventType, TriggeredAtUtc) is the source of truth instead:
+            // a duplicate INSERT fails and is treated as already processed.
+            // See database/002_add_unique_NotificationLog.sql.
+            const string insertSql = @"
+                INSERT INTO NotificationLog
+                    (Id, ReportId, ProjectId, EventType, TriggeredAtUtc, ProcessedAtUtc, Status)
+                VALUES
+                    (NEWID(), @ReportId, @ProjectId, 'ReportApproved', @TriggeredAtUtc, GETUTCDATE(), 'Processed')";
 
-            var alreadyProcessed = await connection.ExecuteScalarAsync<int>(checkSql, new
+            try
             {
-                payload.ReportId,
-                payload.TriggeredAtUtc
-            }) > 0;
-
-            if (alreadyProcessed)
+                await connection.ExecuteAsync(insertSql, new
+                {
+                    payload.ReportId,
+                    payload.ProjectId,
+                    payload.TriggeredAtUtc
+                });
+            }
+            catch (SqlException ex) when (ex.Number is UniqueConstraintViolation or UniqueIndexViolation)
             {
                 _logger.LogInformation(
                     "Message {MessageId} for ReportId={ReportId} already processed. Skipping duplicate, completing message.",
@@ -93,19 +102,6 @@ public class ProcessReportApprovedNotification
                 await messageActions.CompleteMessageAsync(message);
                 return;
             }
-
-            const string insertSql = @"
-                INSERT INTO NotificationLog
-                    (Id, ReportId, ProjectId, EventType, TriggeredAtUtc, ProcessedAtUtc, Status)
-                VALUES
-                    (NEWID(), @ReportId, @ProjectId, 'ReportApproved', @TriggeredAtUtc, GETUTCDATE(), 'Processed')";
-
-            await connection.ExecuteAsync(insertSql, new
-            {
-                payload.ReportId,
-                payload.ProjectId,
-                payload.TriggeredAtUtc
-            });
 
             await messageActions.CompleteMessageAsync(message);
 
