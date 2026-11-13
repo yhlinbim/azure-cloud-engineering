@@ -33,17 +33,36 @@ public class ProcessReportApprovedNotification
 
         try
         {
-            var payload = JsonSerializer.Deserialize<ReportApprovedEvent>(message.Body.ToString());
+            // Malformed payloads are permanent failures — retrying can never succeed,
+            // so dead-letter immediately instead of burning through MaxDeliveryCount.
+            ReportApprovedEvent? payload = null;
+            string? invalidReason = null;
+            try
+            {
+                payload = JsonSerializer.Deserialize<ReportApprovedEvent>(message.Body.ToString());
+            }
+            catch (JsonException ex)
+            {
+                invalidReason = $"Invalid JSON: {ex.Message}";
+            }
 
-            if (payload is null)
+            // Missing properties deserialize to defaults (Guid.Empty / null) rather than
+            // throwing, so they must be checked explicitly.
+            if (invalidReason is null &&
+                (payload is null || payload.ReportId == Guid.Empty || string.IsNullOrWhiteSpace(payload.ProjectId)))
+            {
+                invalidReason = "Message body is missing ReportId or ProjectId";
+            }
+
+            if (payload is null || invalidReason is not null)
             {
                 _logger.LogWarning(
-                    "Message {MessageId} could not be deserialized. Dead-lettering.",
-                    message.MessageId);
+                    "Message {MessageId} has an invalid payload: {Reason}. Dead-lettering.",
+                    message.MessageId, invalidReason);
                 await messageActions.DeadLetterMessageAsync(
                     message,
                     deadLetterReason: "InvalidPayload",
-                    deadLetterErrorDescription: "Message body could not be deserialized into ReportApprovedEvent");
+                    deadLetterErrorDescription: invalidReason);
                 return;
             }
 
