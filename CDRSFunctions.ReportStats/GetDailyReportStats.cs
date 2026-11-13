@@ -20,12 +20,13 @@ namespace CDRSFunctions.ReportStats
             _configuration = configuration;
         }
 
-        // AuthorizationLevel.Anonymous — access control has moved to API Management,
-        // which sits in front of this Function and requires a subscription key.
-        // This Function's own key-based auth is no longer the enforcement point.
+        // AuthorizationLevel.Function — callers go through API Management, which
+        // enforces the subscription key and rate limit, then forwards the Function
+        // key via the x-functions-key header (stored as an APIM Named Value).
+        // Without this, the Function URL could be called directly, bypassing APIM.
         [Function("GetDailyReportStats")]
         public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequestData req)
+            [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
         {
             _logger.LogInformation("GetDailyReportStats function processing a request.");
 

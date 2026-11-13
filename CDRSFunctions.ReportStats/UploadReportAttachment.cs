@@ -18,9 +18,13 @@ public class UploadReportAttachment
         _logger = logger;
     }
 
+    // AuthorizationLevel.Function — callers go through API Management, which
+    // enforces the subscription key and rate limit, then forwards the Function
+    // key via the x-functions-key header (stored as an APIM Named Value).
+    // Without this, anyone with the Function URL could upload files directly.
     [Function("UploadReportAttachment")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
     {
         _logger.LogInformation("UploadReportAttachment processing a request.");
 
