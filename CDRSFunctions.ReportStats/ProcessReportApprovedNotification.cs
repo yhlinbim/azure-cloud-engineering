@@ -50,7 +50,7 @@ public class ProcessReportApprovedNotification
             var connectionString = _configuration.GetConnectionString("SqlConnectionString");
             using var connection = new SqlConnection(connectionString);
 
-            // Idempotency check ¡X Service Bus guarantees at-least-once delivery,
+            // Idempotency check â€” Service Bus guarantees at-least-once delivery,
             // not exactly-once. Retries (e.g. after a transient DB timeout) can
             // redeliver a message that already succeeded. Without this check,
             // every redelivery writes a duplicate row.

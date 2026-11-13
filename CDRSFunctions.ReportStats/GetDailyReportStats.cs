@@ -36,7 +36,7 @@ namespace CDRSFunctions.ReportStats
                 using var connection = new SqlConnection(connectionString);
 
                 // Aggregated at the database level rather than pulling all rows
-                // back and counting in memory �X keeps this read-only endpoint
+                // back and counting in memory — keeps this read-only endpoint
                 // fast even as DailyReports grows.
                 const string sql = @"
                     SELECT
